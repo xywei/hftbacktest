@@ -2,6 +2,7 @@ import numpy as np
 from numba import int64, float64
 from numba.experimental import jitclass
 
+from ..order import OrderBus
 from .proc import Proc, proc_spec
 from ..order import Order, BUY, NEW, CANCELED, FILLED, EXPIRED, NONE, MODIFY, REJECTED, PARTIALLY_FILLED
 from ..reader import (
@@ -40,6 +41,7 @@ class Local_(Proc):
         self.trade_len = 0
         self.last_trades = np.full((trade_list_size, self.data.shape[1]), np.nan, np.float64)
         self.user_data = np.full((20, self.data.shape[1]), np.nan, np.float64)
+        self.orders_log = OrderBus()
 
     def reset(
             self,
@@ -69,11 +71,17 @@ class Local_(Proc):
         else:
             self.last_trades[:, :] = np.nan
         self.user_data[:, :] = np.nan
+        self.orders_log = OrderBus()
 
     def _next_data_timestamp(self):
         return self._next_data_timestamp_column(COL_LOCAL_TIMESTAMP)
 
     def _process_recv_order(self, order, recv_timestamp, wait_resp, next_timestamp):
+
+        if 1:
+            # log all order history
+            self.orders_log.append(order, recv_timestamp)
+
         # Apply the received order response to the local orders.
         if order.req == REJECTED:
             existing_order = self.orders.get(order.order_id)
@@ -230,6 +238,7 @@ def Local(
             ('trade_len', int64),
             ('last_trades', float64[:, :]),
             ('user_data', float64[:, :]),
+            ('orders_log', OrderBus.class_type.instance_type),
         ]
     )(Local_)
     return jitted(
